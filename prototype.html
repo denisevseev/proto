@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>Агентная модель демографии и рынка труда — прототип v2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --fg:#e2e8f0; --muted:#94a3b8; --accent:#22c55e; --panel:#111827; --card:#0b1220; --line:#334155;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial; color:var(--fg); background:linear-gradient(180deg,#0b1020,#0b1226 45%,#0b1220)}
+  header{padding:14px 18px;background:#0b1220;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  header h1{margin:0;font-size:18px}
+  nav{display:flex;gap:6px;padding:10px 12px;background:#0b1220;position:sticky;top:56px;z-index:9;border-bottom:1px solid var(--line)}
+  nav button{padding:10px 12px;border:1px solid var(--line);background:#0d1628;color:var(--fg);border-radius:10px;cursor:pointer}
+  nav button.active{background:var(--accent);color:#04130a;border-color:#0a2d16}
+  main{padding:16px}
+  section{display:none}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:14px;padding:14px}
+  h2{margin:0 0 8px 0;font-size:18px}
+  h3{margin:10px 0 6px 0;font-size:16px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
+  .ctrl{display:grid;grid-template-columns:240px 1fr 80px;gap:10px;align-items:center;margin:6px 0}
+  .ctrl label{color:var(--fg)}
+  input[type="range"]{width:100%}
+  input[type="number"]{width:90px;padding:6px;border-radius:8px;border:1px solid var(--line);background:#0a1326;color:var(--fg)}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  #map{height:440px;border-radius:12px;overflow:hidden}
+  .btn{padding:10px 12px;border:1px solid var(--line);background:#0d1628;color:var(--fg);border-radius:10px;cursor:pointer}
+  .btn.primary{background:var(--accent);color:#04130a;border-color:#0a2d16}
+  .legend{color:var(--muted);font-size:12px}
+  .flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pill{padding:4px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+  .log{height:150px;overflow:auto;background:#0a1326;border:1px solid var(--line);border-radius:10px;padding:8px;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+  .arch svg rect{fill:#0d1628;stroke:#2a3a58;stroke-width:1.2;rx:10}
+  .arch svg text{fill:#e2e8f0;font-size:12px}
+  .arch svg path{stroke:#425472;stroke-width:1.4;fill:none;marker-end:url(#arrow)}
+  .warn{color:#fbbf24}
+  @media (max-width:1100px){ .row{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<header><h1>Прототип v2 — Агентная модель демографии и рынка труда</h1></header>
+
+<nav id="tabs"></nav>
+
+<main>
+  <!-- ЛЮДИ: свойства -->
+  <section id="tab-people">
+    <div class="row">
+      <div class="card">
+        <h2>Свойства агентов-людей (распределения/веса)</h2>
+        <div id="people-props"></div>
+        <div class="legend">Шкала 0–100: 0 — низкое влияние/уровень, 100 — максимальное.</div>
+      </div>
+      <div class="card">
+        <h2>Параметры демо-популяции</h2>
+        <div class="ctrl"><label>Численность (групповая, аггр.)</label><input id="p-pop" type="range" min="10000" max="2000000" step="10000" value="500000" /><output id="p-pop-val">500000</output></div>
+        <div class="ctrl"><label>Доля занятых %</label><input id="p-employed" type="range" min="0" max="100" step="1" value="45" /><output id="p-employed-val">45</output></div>
+        <div class="ctrl"><label>Доля безработных %</label><input id="p-unemp" type="range" min="0" max="100" step="1" value="8" /><output id="p-unemp-val">8</output></div>
+        <div class="ctrl"><label>Доля студентов %</label><input id="p-stud" type="range" min="0" max="100" step="1" value="10" /><output id="p-stud-val">10</output></div>
+        <div class="ctrl"><label>Доля пенсионеров %</label><input id="p-ret" type="range" min="0" max="100" step="1" value="15" /><output id="p-ret-val">15</output></div>
+        <div class="ctrl"><label>Доля в браке %</label><input id="p-married" type="range" min="0" max="100" step="1" value="40" /><output id="p-married-val">40</output></div>
+        <div class="legend">Доли автоматически нормируются (остаток — прочие категории).</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ДЕЙСТВИЯ ЛЮДЕЙ -->
+  <section id="tab-people-actions">
+    <div class="card">
+      <h2>Действия агентов-людей</h2>
+      <div id="people-actions" class="grid-2"></div>
+      <div class="legend">Каждое действие: включатель, вероятность события на тик (%) и интенсивность (доля от целевой группы).</div>
+    </div>
+  </section>
+
+  <!-- ОРГАНИЗАЦИИ: параметры -->
+  <section id="tab-org">
+    <div class="row">
+      <div class="card">
+        <h2>Агенты-организации (параметры)</h2>
+        <div class="ctrl"><label>Число организаций</label><input id="o-count" type="range" min="10" max="5000" step="10" value="500" /><output id="o-count-val">500</output></div>
+        <div class="ctrl"><label>Средняя зарплата (₽)</label><input id="o-wage" type="range" min="20000" max="200000" step="1000" value="70000" /><output id="o-wage-val">70000</output></div>
+        <div class="ctrl"><label>Средняя нагрузка (час/нед)</label><input id="o-hrs" type="range" min="20" max="60" step="1" value="40" /><output id="o-hrs-val">40</output></div>
+      </div>
+      <div class="card">
+        <h2>Примечания</h2>
+        <p class="legend">Организации воздействуют на занятость, зарплаты и рабочее время через свои действия (найм, увольнение, изменение оплаты и часов).</p>
+        <p class="legend">В этом прототипе влияние агрегируется на уровне всего пула организаций.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ДЕЙСТВИЯ ОРГАНИЗАЦИЙ -->
+  <section id="tab-org-actions">
+    <div class="card">
+      <h2>Действия агентов-организаций</h2>
+      <div id="org-actions" class="grid-2"></div>
+      <div class="legend">Вероятность — шанс срабатывания политики в тик; интенсивность — сила изменения на затронутой группе.</div>
+    </div>
+  </section>
+
+  <!-- МОДЕЛИРОВАНИЕ -->
+  <section id="tab-sim">
+    <div class="row">
+      <div class="card">
+        <h2>Моделирование (дискретные тики)</h2>
+        <div class="flex" style="margin-bottom:10px">
+          <button class="btn" id="btn-init">Инициализировать</button>
+          <button class="btn primary" id="btn-step">Шаг (1 тик)</button>
+          <button class="btn" id="btn-auto">Авто ▶</button>
+          <span class="pill">Тик: <span id="tick">0</span></span>
+          <span class="pill">Год: <input id="year" type="number" value="2020" /> </span>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Население</h3>
+            <table>
+              <tr><td>Всего</td><td id="m-pop">—</td></tr>
+              <tr><td>Заняты</td><td id="m-employed">—</td></tr>
+              <tr><td>Безработные</td><td id="m-unemp">—</td></tr>
+              <tr><td>Студенты</td><td id="m-stud">—</td></tr>
+              <tr><td>Пенсионеры</td><td id="m-ret">—</td></tr>
+              <tr><td>В браке (пар)</td><td id="m-couples">—</td></tr>
+            </table>
+          </div>
+          <div class="card">
+            <h3>Демография (на тик)</h3>
+            <table>
+              <tr><td>Рождений</td><td id="m-births">—</td></tr>
+              <tr><td>Смертей</td><td id="m-deaths">—</td></tr>
+              <tr><td>Миграции (±)</td><td id="m-mig">—</td></tr>
+            </table>
+          </div>
+          <div class="card">
+            <h3>Рынок труда</h3>
+            <table>
+              <tr><td>Вакансии, ед. (условно)</td><td id="m-vac">—</td></tr>
+              <tr><td>Средняя зарплата, ₽</td><td id="m-wage">—</td></tr>
+              <tr><td>Средняя нагрузка, ч/нед</td><td id="m-hrs">—</td></tr>
+            </table>
+          </div>
+        </div>
+        <h3>Журнал событий</h3>
+        <div class="log" id="log"></div>
+      </div>
+      <div class="card">
+        <h2>Динамика населения</h2>
+        <canvas id="chart" height="240"></canvas>
+        <div class="legend">Демонстрационная динамика по тикам, агрегировано.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- КАРТА -->
+  <section id="tab-map">
+    <div class="row">
+      <div class="card">
+        <h2>Карта (демо)</h2>
+        <div id="map"></div>
+        <div class="flex" style="margin-top:10px">
+          <label>Год: <input id="map-year" type="range" min="2000" max="2025" value="2020" step="5"></label>
+          <span class="pill" id="map-year-val">2020</span>
+        </div>
+        <div class="legend">Цвет маркеров меняется в зависимости от выбранного года и условного размера города.</div>
+      </div>
+      <div class="card">
+        <h2>Слои/легенда</h2>
+        <p class="legend">Для MVP можно добавить заливку регионов по реальным данным (Росстат/ЕМИСС) и потоки миграции (стрелки). В этом прототипе — точки основных городов.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- АРХИТЕКТУРА -->
+  <section id="tab-arch">
+    <div class="card arch">
+      <h2>Прототип архитектуры информационной системы</h2>
+      <svg width="100%" viewBox="0 0 1100 520" role="img" aria-label="Архитектурная схема">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+            <path d="M0,0 L10,4 L0,8 z" fill="#425472"></path>
+          </marker>
+        </defs>
+        <!-- Ряд 1: источники -->
+        <rect x="30" y="30" width="260" height="70"></rect>
+        <text x="45" y="55">Источники данных</text>
+        <text x="45" y="74">Росстат / ЕМИСС / ВПО-1,2 / Открытые ГИС</text>
+
+        <!-- ETL -->
+        <rect x="320" y="30" width="190" height="70"></rect>
+        <text x="335" y="55">ETL/ELT конвейер</text>
+        <text x="335" y="74">Загрузка, очистка, нормализация</text>
+
+        <!-- Хранилище -->
+        <rect x="540" y="30" width="220" height="70"></rect>
+        <text x="555" y="55">Хранилище данных</text>
+        <text x="555" y="74">PostgreSQL + PostGIS / Data Lake</text>
+
+        <!-- Фича-стор -->
+        <rect x="790" y="30" width="260" height="70"></rect>
+        <text x="805" y="55">Слои признаков/агрегаций</text>
+        <text x="805" y="74">Подготовка входов для модели</text>
+
+        <!-- Ядро модели -->
+        <rect x="140" y="150" width="260" height="90"></rect>
+        <text x="155" y="175">Агентное ядро</text>
+        <text x="155" y="194">Агенты-люди/организации, цикл тиков</text>
+
+        <!-- Калибровка -->
+        <rect x="440" y="150" width="220" height="90"></rect>
+        <text x="455" y="175">Калибровка/валидация</text>
+        <text x="455" y="194">Баес/корреляции, подбор параметров</text>
+
+        <!-- Сценарии -->
+        <rect x="690" y="150" width="180" height="90"></rect>
+        <text x="705" y="175">Сценарный модуль</text>
+        <text x="705" y="194">Политики, варианты входов</text>
+
+        <!-- API -->
+        <rect x="900" y="150" width="150" height="90"></rect>
+        <text x="915" y="175">API сервиса</text>
+        <text x="915" y="194">REST/GraphQL</text>
+
+        <!-- Визуализация -->
+        <rect x="120" y="280" width="280" height="90"></rect>
+        <text x="135" y="305">Веб-интерфейс</text>
+        <text x="135" y="324">Карта, графики, отчёты</text>
+
+        <!-- Экспорт -->
+        <rect x="440" y="280" width="220" height="90"></rect>
+        <text x="455" y="305">Экспорт результатов</text>
+        <text x="455" y="324">CSV / Excel / GeoJSON</text>
+
+        <!-- Мониторинг/логирование -->
+        <rect x="700" y="280" width="200" height="90"></rect>
+        <text x="715" y="305">Мониторинг/логирование</text>
+        <text x="715" y="324">Метрики, трейсинг</text>
+
+        <!-- Безопасность -->
+        <rect x="930" y="280" width="140" height="90"></rect>
+        <text x="945" y="305">Безопасность</text>
+        <text x="945" y="324">Доступы, аудит</text>
+
+        <!-- Стрелки -->
+        <path d="M290,65 L320,65" />
+        <path d="M510,65 L540,65" />
+        <path d="M760,65 L790,65" />
+        <path d="M650,100 L270,150" />
+        <path d="M650,100 L545,150" />
+        <path d="M650,100 L780,150" />
+        <path d="M270,240 L260,280" />
+        <path d="M550,240 L550,280" />
+        <path d="M780,240 L800,280" />
+        <path d="M975,240 L1000,280" />
+        <path d="M820,195 L900,195" />
+        <path d="M900,195 L400,315" />
+      </svg>
+      <p class="legend">Схема отражает: источники → ETL → хранилище/фичи → агентное ядро + калибровка/сценарии → API → UI/экспорт, с мониторингом и безопасностью.</p>
+    </div>
+  </section>
+
+  <!-- ИСТОЧНИКИ ДАННЫХ -->
+  <section id="tab-data">
+    <div class="card">
+      <h2>Источники данных (публичные)</h2>
+      <table>
+        <tr><th>Источник</th><th>Типы данных</th><th>Назначение в модели</th></tr>
+        <tr><td>Росстат, переписи 1989/2002/2010/2021, БДМО</td><td>Население, рождаемость, смертность, миграция, занятость</td><td>Калибровка демографии и рынка труда</td></tr>
+        <tr><td>ЕМИСС (API)</td><td>8k+ соц-экон индикаторов по регионам/МО</td><td>Факторы и драйверы переходов</td></tr>
+        <tr><td>Минобрнауки (ВПО-1/ВПО-2)</td><td>Потоки студентов межрегионально</td><td>Образовательная миграция (люди/вузы)</td></tr>
+        <tr><td>Открытые геоданные (OSM, публичные ГИС)</td><td>Границы, координаты, агломерации</td><td>Пространственная привязка агентов</td></tr>
+      </table>
+      <p class="legend">В прототипе используются демонстрационные значения; подключение реальных наборов добавляется на этапе интеграции.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ---------- Табы ---------- */
+const tabs = [
+  {id:'people', label:'Люди: свойства'},
+  {id:'people-actions', label:'Действия людей'},
+  {id:'org', label:'Организации'},
+  {id:'org-actions', label:'Действия организаций'},
+  {id:'sim', label:'Моделирование'},
+  {id:'map', label:'Карта'},
+  {id:'arch', label:'Архитектура'},
+  {id:'data', label:'Источники данных'}
+];
+const nav = document.getElementById('tabs');
+tabs.forEach((t,i)=>{
+  const b=document.createElement('button');
+  b.textContent=t.label; b.onclick=(e)=>showTab(t.id,e); if(i===0) b.classList.add('active');
+  nav.appendChild(b);
+});
+function showTab(id, ev){
+  document.querySelectorAll('section').forEach(s=>s.style.display='none');
+  document.getElementById('tab-'+id).style.display='block';
+  document.querySelectorAll('nav button').forEach(btn=>btn.classList.remove('active'));
+  if(ev && ev.target) ev.target.classList.add('active');
+}
+document.getElementById('tab-people').style.display='block';
+
+/* ---------- Конфиг: свойства людей и действия ---------- */
+const personProperties = [
+  {id:'values', label:'Ценности'},
+  {id:'traits', label:'Черты характера'},
+  {id:'psy', label:'Психологическое состояние'},
+  {id:'skills', label:'Навыки'},
+  {id:'memory', label:'Память'},
+  {id:'important', label:'Значимые люди (близкие/кумиры)'},
+  {id:'norms', label:'Соблюдаемые социальные нормы'},
+  {id:'wealth', label:'Доход и сбережения'},
+  {id:'fatigue', label:'Усталость/болезнь'}
+];
+const personActions = [
+  {id:'find_job', label:'Искать работу'},
+  {id:'get_job', label:'Устроиться на работу'},
+  {id:'quit_job', label:'Уволиться с работы'},
+  {id:'relocate', label:'Переехать (регион/город)'},
+  {id:'upskill', label:'Пройти курсы повышения квалификации'},
+  {id:'education', label:'Получить образование'},
+  {id:'retire', label:'Уйти на пенсию'},
+  {id:'meet_partner', label:'Познакомиться с девушкой/парнем'},
+  {id:'make_couple', label:'Создать пару'},
+  {id:'marry', label:'Жениться/выйти замуж'},
+  {id:'divorce', label:'Развестись'},
+  {id:'birth', label:'Родить ребенка'},
+  {id:'death', label:'Умереть'}
+];
+const orgActions = [
+  {id:'hire', label:'Нанять сотрудников'},
+  {id:'fire', label:'Уволить сотрудников'},
+  {id:'wage', label:'Повысить/понизить зарплату'},
+  {id:'hours', label:'Изменить количество рабочего времени'}
+];
+
+const config = {
+  person:{ props:{}, actions:{} },
+  org:{ count:500, wage:70000, hours:40, actions:{} }
+};
+personProperties.forEach(p=>config.person.props[p.id]=50);
+personActions.forEach(a=>config.person.actions[a.id]={enabled:true, prob:2, intensity:10});
+orgActions.forEach(a=>config.org.actions[a.id]={enabled:true, prob:5, intensity:10, delta:0});
+
+/* ---------- UI построение ---------- */
+function fmtPercent(v){return `${v}%`}
+function bindRange(id, outId, onChange){
+  const el=document.getElementById(id), out=document.getElementById(outId);
+  const handler=()=>{ out.textContent = el.value; onChange && onChange(+el.value); };
+  el.addEventListener('input', handler); handler();
+}
+function buildPeopleProps(){
+  const box=document.getElementById('people-props'); box.innerHTML='';
+  personProperties.forEach(p=>{
+    const row=document.createElement('div'); row.className='ctrl';
+    row.innerHTML=`<label>${p.label}</label>
+      <input type="range" id="pp-${p.id}" min="0" max="100" step="1" value="${config.person.props[p.id]}">
+      <output id="ppv-${p.id}">${config.person.props[p.id]}</output>`;
+    box.appendChild(row);
+    bindRange(`pp-${p.id}`, `ppv-${p.id}`, v=>config.person.props[p.id]=v);
+  });
+  // демо-популяция
+  bindRange('p-pop','p-pop-val', v=>initBase.pop=v);
+  bindRange('p-employed','p-employed-val', v=>initBase.employed=v);
+  bindRange('p-unemp','p-unemp-val', v=>initBase.unemp=v);
+  bindRange('p-stud','p-stud-val', v=>initBase.stud=v);
+  bindRange('p-ret','p-ret-val', v=>initBase.ret=v);
+  bindRange('p-married','p-married-val', v=>initBase.married=v);
+}
+function buildActions(containerId, items, tgt){
+  const wrap=document.getElementById(containerId); wrap.innerHTML='';
+  items.forEach(a=>{
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML=`
+      <h3>${a.label}</h3>
+      <div class="ctrl">
+        <label><input type="checkbox" id="${tgt}-${a.id}-en" ${config[tgt].actions[a.id].enabled?'checked':''}> Включено</label>
+        <span></span><span></span>
+      </div>
+      <div class="ctrl">
+        <label>Вероятность на тик, %</label>
+        <input type="range" id="${tgt}-${a.id}-prob" min="0" max="100" step="1" value="${config[tgt].actions[a.id].prob}">
+        <output id="${tgt}-${a.id}-probv">${config[tgt].actions[a.id].prob}</output>
+      </div>
+      <div class="ctrl">
+        <label>Интенсивность/охват, % от целевой группы</label>
+        <input type="range" id="${tgt}-${a.id}-int" min="0" max="100" step="1" value="${config[tgt].actions[a.id].intensity}">
+        <output id="${tgt}-${a.id}-intv">${config[tgt].actions[a.id].intensity}</output>
+      </div>
+      ${a.id==='wage' ? `
+      <div class="ctrl">
+        <label>Δ зарплаты, % (может быть отриц.)</label>
+        <input type="number" id="${tgt}-${a.id}-delta" value="${config[tgt].actions[a.id].delta}" step="1">
+        <span></span>
+      </div>` : ''}
+      ${a.id==='hours' ? `
+      <div class="ctrl">
+        <label>Δ часов/нед, % (может быть отриц.)</label>
+        <input type="number" id="${tgt}-${a.id}-delta" value="${config[tgt].actions[a.id].delta}" step="1">
+        <span></span>
+      </div>` : ''}
+    `;
+    wrap.appendChild(card);
+    // бинды
+    document.getElementById(`${tgt}-${a.id}-en`).addEventListener('change', e=>config[tgt].actions[a.id].enabled=e.target.checked);
+    bindRange(`${tgt}-${a.id}-prob`, `${tgt}-${a.id}-probv`, v=>config[tgt].actions[a.id].prob=v);
+    bindRange(`${tgt}-${a.id}-int`, `${tgt}-${a.id}-intv`, v=>config[tgt].actions[a.id].intensity=v);
+    const deltaEl=document.getElementById(`${tgt}-${a.id}-delta`);
+    if(deltaEl) deltaEl.addEventListener('input', e=>config[tgt].actions[a.id].delta=+e.target.value);
+  });
+}
+function buildOrgParams(){
+  bindRange('o-count','o-count-val', v=>config.org.count=v);
+  bindRange('o-wage','o-wage-val', v=>{config.org.wage=v; refreshMetrics()});
+  bindRange('o-hrs','o-hrs-val', v=>{config.org.hours=v; refreshMetrics()});
+}
+buildPeopleProps();
+buildActions('people-actions', personActions, 'person');
+buildOrgParams();
+buildActions('org-actions', orgActions, 'org');
+
+/* ---------- Модель: состояние и шаг ---------- */
+const initBase = {pop:500000, employed:45, unemp:8, stud:10, ret:15, married:40};
+let state = null, tick=0, timer=null;
+const logEl = document.getElementById('log');
+
+function initState(){
+  const P=initBase.pop;
+  const shares = {
+    employed: initBase.employed/100,
+    unemp: initBase.unemp/100,
+    stud: initBase.stud/100,
+    ret: initBase.ret/100,
+    married: initBase.married/100
+  };
+  const employed=Math.round(P*shares.employed);
+  const unemp=Math.round(P*shares.unemp);
+  const stud=Math.round(P*shares.stud);
+  const ret=Math.round(P*shares.ret);
+  const other = P - employed - unemp - stud - ret;
+  const couples=Math.round(P*shares.married/2); // пары считаем как/2
+  state={
+    P, employed, unemp, stud, ret, other, couples,
+    wage: config.org.wage, hours: config.org.hours,
+    vacancies: Math.round(config.org.count*3),
+    births:0, deaths:0, migNet:0
+  };
+  tick=0; logEl.textContent='';
+  refreshMetrics(true);
+  pushChartPoint();
+}
+function randBinom(n, p){ // n trials, p in [0,1]
+  if(n<=0||p<=0) return 0;
+  let mean=n*p;
+  // нормальное приближение
+  const sd=Math.sqrt(n*p*(1-p));
+  const z=(Math.random()*2-1)+(Math.random()*2-1)+(Math.random()*2-1); // ~N(0,1*1.7)
+  const k=Math.max(0, Math.round(mean + z*sd*0.85));
+  return Math.min(k,n);
+}
+function clamp(v,min,max){return Math.max(min, Math.min(max, v));}
+function effectByProps(base, weights){
+  // агрегируем влияния свойств 0..100 → множитель 0.5..1.5
+  const avg = weights.reduce((s,k)=>s+config.person.props[k],0)/weights.length/100; // 0..1
+  return base*(0.5 + avg); // 0.5..1.5
+}
+function log(line){ logEl.textContent = `[тик ${tick}] ${line}\n` + logEl.textContent; }
+
+function step(){
+  if(!state){ initState(); }
+  tick++;
+  const yearEl=document.getElementById('year');
+  const year=+yearEl.value; yearEl.value=year+1; document.getElementById('tick').textContent=tick;
+
+  // ----- Люди: действия -----
+  const aP = config.person.actions;
+  // Роды/смерти
+  const births = aP.birth.enabled ? randBinom(state.P, (aP.birth.prob/1000)) : 0; // масштаб демо
+  const deaths = aP.death.enabled ? randBinom(state.P, (aP.death.prob/1000)) : 0;
+
+  // Учёба/курсы → рост навыков
+  const upskillCount = aP.upskill.enabled ? randBinom(state.employed+state.unemp, (aP.upskill.prob/100)* (aP.upskill.intensity/100)*0.02) : 0;
+  const eduEnrolled = aP.education.enabled ? randBinom(state.other, (aP.education.prob/100)* (aP.education.intensity/100)*0.01) : 0;
+
+  // Поиск/устроиться/уволиться
+  const seekers = aP.find_job.enabled ? randBinom(state.unemp, aP.find_job.prob/100) : 0;
+  const skillsBoost = effectByProps(1, ['skills','memory']);
+  const fatigueBoost = effectByProps(1, ['fatigue']);
+  const getJobBase = Math.min(seekers, state.vacancies);
+  const gotJob = aP.get_job.enabled ? Math.round(getJobBase * (aP.get_job.intensity/100) * (skillsBoost/1.2)) : 0;
+  const quit = aP.quit_job.enabled ? randBinom(state.employed, (aP.quit_job.prob/100)*(aP.quit_job.intensity/100)*0.02*(fatigueBoost/1)) : 0;
+
+  // Пенсия
+  const retired = aP.retire.enabled ? randBinom(state.employed+state.unemp, (aP.retire.prob/1000)*(aP.retire.intensity/100)) : 0;
+
+  // Пары/брак/развод/знакомства
+  const meets = aP.meet_partner.enabled ? randBinom(state.other, (aP.meet_partner.prob/1000)*(aP.meet_partner.intensity/100)) : 0;
+  const newPairs = aP.make_couple.enabled ? randBinom(state.other, (aP.make_couple.prob/1000)*(aP.make_couple.intensity/100)) : 0;
+  const marriages = aP.marry.enabled ? randBinom(state.other, (aP.marry.prob/1000)*(aP.marry.intensity/100)) : 0;
+  const divorces = aP.divorce.enabled ? randBinom(state.couples, (aP.divorce.prob/1000)*(aP.divorce.intensity/100)) : 0;
+
+  // Миграция (чистая)
+  const migNet = aP.relocate.enabled ? Math.round(((aP.relocate.prob*aP.relocate.intensity)/10000 - 0.05) * 200) : 0;
+
+  // ----- Организации: действия -----
+  const aO = config.org.actions;
+  const hireEff = aO.hire.enabled ? (aO.hire.prob/100)*(aO.hire.intensity/100) : 0;
+  const fireEff = aO.fire.enabled ? (aO.fire.prob/100)*(aO.fire.intensity/100) : 0;
+  const orgHires = Math.min(state.unemp, Math.round(state.vacancies*hireEff));
+  const orgFires = randBinom(state.employed, fireEff*0.05);
+
+  if(aO.wage.enabled){
+    state.wage = Math.round(state.wage * (1 + (aO.wage.delta/100)*(aO.wage.prob/100)));
+  }
+  if(aO.hours.enabled){
+    state.hours = Math.round(state.hours * (1 + (aO.hours.delta/100)*(aO.hours.prob/100)));
+  }
+
+  // ----- Обновление агрегатов -----
+  state.P = clamp(state.P + births - deaths + migNet, 1000, 1e9);
+  state.births=births; state.deaths=deaths; state.migNet=migNet;
+
+  // образование
+  state.stud = clamp(state.stud + eduEnrolled - Math.round(eduEnrolled*0.02), 0, state.P);
+  // навыки (приближение): растут со временем, когда upskill
+  if(upskillCount>0){ config.person.props.skills = clamp(config.person.props.skills + Math.min(5, Math.round(upskillCount/state.P*1000)), 0, 100); }
+
+  // труд
+  state.employed = clamp(state.employed + gotJob + orgHires - quit - orgFires - retired, 0, state.P);
+  state.unemp = clamp(state.unemp - gotJob - orgHires + quit + orgFires, 0, state.P);
+  state.ret = clamp(state.ret + retired, 0, state.P);
+
+  // браки
+  state.couples = clamp(state.couples + Math.round((newPairs+marriages - divorces)/2), 0, Math.floor(state.P/2));
+
+  // вакансии (простая динамика)
+  state.vacancies = clamp(state.vacancies - (gotJob+orgHires) + Math.round(config.org.count*0.02), 0, config.org.count*10);
+
+  // вывод
+  refreshMetrics();
+  log(`Рожд:${births} Смерт:${deaths} Мигр:${migNet} → Устр:${gotJob}+${orgHires} Увол:${quit}+${orgFires} Пенс:${retired} Пары:+${newPairs}/${marriages} Разв:${divorces} Навыки:${config.person.props.skills}`);
+  pushChartPoint();
+}
+
+function refreshMetrics(init=false){
+  if(!state) return;
+  document.getElementById('m-pop').textContent=state.P.toLocaleString('ru-RU');
+  document.getElementById('m-employed').textContent=state.employed.toLocaleString('ru-RU');
+  document.getElementById('m-unemp').textContent=state.unemp.toLocaleString('ru-RU');
+  document.getElementById('m-stud').textContent=state.stud.toLocaleString('ru-RU');
+  document.getElementById('m-ret').textContent=state.ret.toLocaleString('ru-RU');
+  document.getElementById('m-couples').textContent=state.couples.toLocaleString('ru-RU');
+
+  document.getElementById('m-births').textContent=state.births.toLocaleString('ru-RU');
+  document.getElementById('m-deaths').textContent=state.deaths.toLocaleString('ru-RU');
+  document.getElementById('m-mig').textContent=state.migNet.toLocaleString('ru-RU');
+
+  document.getElementById('m-vac').textContent=state.vacancies.toLocaleString('ru-RU');
+  document.getElementById('m-wage').textContent=state.wage.toLocaleString('ru-RU');
+  document.getElementById('m-hrs').textContent=state.hours;
+  document.getElementById('tick').textContent=tick;
+  if(init) chart.data.labels=[0], chart.data.datasets[0].data=[state.P]; chart.update();
+}
+
+document.getElementById('btn-init').onclick=()=>initState();
+document.getElementById('btn-step').onclick=()=>step();
+document.getElementById('btn-auto').onclick=(e)=>{
+  if(timer){ clearInterval(timer); timer=null; e.target.textContent='Авто ▶'; return; }
+  e.target.textContent='Авто ⏸';
+  timer=setInterval(step, 800);
+};
+
+/* ---------- График ---------- */
+const chart = new Chart(document.getElementById('chart'), {
+  type:'line',
+  data:{ labels:[0], datasets:[{label:'Население', data:[0], borderWidth:2}]},
+  options:{ responsive:true, plugins:{legend:{display:true}}, scales:{y:{beginAtZero:false}}}
+});
+function pushChartPoint(){ chart.data.labels.push(tick); chart.data.datasets[0].data.push(state.P); chart.update(); }
+
+/* ---------- Карта ---------- */
+const map = L.map('map').setView([61, 90], 3);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:6, attribution:'© OpenStreetMap'}).addTo(map);
+const cities = [
+  [55.75,37.62,"Москва",12655],[59.94,30.31,"Санкт-Петербург",5600],[56.84,60.61,"Екатеринбург",1500],
+  [55.03,82.92,"Новосибирск",1630],[43.12,131.88,"Владивосток",600],[45.04,38.98,"Краснодар",1200],
+  [54.98,73.37,"Омск",1100],[53.20,50.15,"Самара",1170],[51.53,46.01,"Саратов",900],
+  [56.33,44.00,"Нижний Новгород",1250],[55.16,61.39,"Челябинск",1200],[58.01,56.25,"Пермь",1040],
+  [48.48,135.09,"Хабаровск",620],[55.79,49.12,"Казань",1300],[56.86,53.21,"Ижевск",650],
+  [44.62,40.12,"Армавир",190],[43.9,42.72,"Нальчик",240],[66.08,76.68,"Ноябрьск",110]
+];
+const markers = cities.map(([lat,lon,name,base])=>{
+  const m=L.circleMarker([lat,lon],{radius:6, color:'#e11d48', fillColor:'#e11d48', fillOpacity:.8}).addTo(map);
+  m.bindPopup(`${name}: демо`);
+  m._base=base; return m;
+});
+const mapYear=document.getElementById('map-year'), mapYearVal=document.getElementById('map-year-val');
+mapYear.addEventListener('input', ()=>{
+  mapYearVal.textContent=mapYear.value;
+  const k=(mapYear.value-2000)/25; // 0..1
+  markers.forEach(m=>{
+    const r = 4 + Math.sqrt(m._base/300)*(1+k);
+    const col = k>0.6 ? '#f59e0b' : (k>0.3? '#22c55e' : '#e11d48');
+    m.setStyle({radius:r, color:col, fillColor:col});
+  });
+});
+mapYear.dispatchEvent(new Event('input'));
+</script>
+</body>
+</html>

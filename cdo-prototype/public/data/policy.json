@@ -1,0 +1,9 @@
+{
+  "months": 36,
+  "birthRate": 0.011,
+  "deathRate": 0.013,
+  "migrationNet": 150000,
+  "employmentShock": 0.001
+}
+
+
