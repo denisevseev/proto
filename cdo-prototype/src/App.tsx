@@ -494,7 +494,7 @@ function App() {
                 <Line type="monotone" dataKey="migration" stroke="#0ea5e9" name="миграция" />
               </LineChart>
             </ResponsiveContainer>
-          </div>
+      </div>
       </div>
 
       {/* Architecture section */}
